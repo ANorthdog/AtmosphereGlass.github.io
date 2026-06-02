@@ -1,0 +1,840 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Yokohama Chill Weather</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@200;300;400;600&family=Noto+Sans+JP:wght@300;400;500&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --font-main: 'Montserrat', 'Noto Sans JP', sans-serif;
+        }
+        body {
+            font-family: var(--font-main);
+            transition: background-color 2s ease, color 2s ease;
+        }
+
+        @keyframes bg-breathe {
+            0% { transform: scale(1); opacity: 0.85; filter: hue-rotate(0deg); }
+            50% { transform: scale(1.05); opacity: 1; filter: hue-rotate(10deg); }
+            100% { transform: scale(1); opacity: 0.85; filter: hue-rotate(0deg); }
+        }
+        .animate-bg-breathe {
+            animation: bg-breathe 20s infinite ease-in-out alternate;
+        }
+
+        @keyframes float {
+            0% { transform: translateY(0px); }
+            50% { transform: translateY(-10px); }
+            100% { transform: translateY(0px); }
+        }
+        .animate-float {
+            animation: float 6s ease-in-out infinite;
+        }
+
+        .scrollbar-hide::-webkit-scrollbar {
+            display: none;
+        }
+        .scrollbar-hide {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+        }
+        
+        .bg-sunny-morning { background: linear-gradient(135deg, #fbc2eb, #a6c1ee); }
+        .bg-sunny-day { background: linear-gradient(135deg, #FFD194, #70E1F5); }
+        .bg-sunny-night { background: linear-gradient(135deg, #141E30, #243B55); }
+        .bg-cloudy { background: linear-gradient(135deg, #8e9eab, #eef2f3); }
+        .bg-cloudy-night { background: linear-gradient(135deg, #2c3e50, #3498db); }
+        .bg-fog { background: linear-gradient(135deg, #5c6bc0, #9fa8da, #cfd8dc); }
+        .bg-drizzle { background: linear-gradient(135deg, #4b6cb7, #182848); }
+        .bg-rain { background: linear-gradient(135deg, #2b5876, #4e4376); }
+        .bg-heavy-rain { background: linear-gradient(135deg, #141e30, #243b55, #000000); }
+        .bg-thunder { background: linear-gradient(135deg, #0f2027, #203a43, #2c5364); }
+        .bg-snow { background: linear-gradient(135deg, #E0EAFC, #CFDEF3); }
+        .bg-sleet { background: linear-gradient(135deg, #606c88, #3f4c6b); }
+
+        .spin-once {
+            animation: spin 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="overflow-hidden text-white antialiased w-full h-screen relative bg-slate-900">
+
+    <div id="dynamic-bg" class="fixed inset-0 z-0 animate-bg-breathe bg-sunny-day transition-all duration-[3000ms]"></div>
+    
+    <canvas id="effect-canvas" class="fixed inset-0 z-10 pointer-events-none opacity-80"></canvas>
+
+    <div class="relative z-20 flex flex-col md:flex-row gap-6 md:gap-8 items-center md:items-stretch justify-center min-h-screen p-4 sm:p-8 w-full max-w-7xl mx-auto py-12">
+        
+        <!-- 左パネル -->
+        <div class="w-full md:w-7/12 lg:w-2/3 max-w-3xl rounded-[2rem] glass-panel flex flex-col overflow-hidden transition-all duration-700 ease-out transform opacity-0 translate-y-8" id="main-panel">
+            
+            <div class="flex justify-between items-center px-8 py-6 border-b border-white/10 shrink-0">
+                <div class="flex items-center space-x-3 text-white/80">
+                    <i data-lucide="map-pin" class="w-5 h-5"></i>
+                    <span class="text-sm font-light tracking-[0.2em] uppercase">Yokohama</span>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <div id="typhoon-alert" class="hidden flex items-center space-x-2 bg-red-500/20 px-4 py-1.5 rounded-full text-xs tracking-wider border border-red-500/30 text-red-100 backdrop-blur-md transition-opacity">
+                        <i data-lucide="alert-circle" class="w-4 h-4 animate-pulse"></i>
+                        <span>TYPHOON ALERT</span>
+                    </div>
+                    <button id="refresh-btn" class="p-2 rounded-full hover:bg-white/10 transition-colors focus:outline-none text-white/70 hover:text-white" aria-label="Refresh Weather">
+                        <i data-lucide="refresh-cw" class="w-5 h-5 transition-transform" id="refresh-icon"></i>
+                    </button>
+                </div>
+            </div>
+
+            <div id="loading-view" class="flex flex-col items-center justify-center flex-1 py-20 space-y-4">
+                <i data-lucide="loader-2" class="w-10 h-10 animate-spin text-white/50"></i>
+                <span class="text-xs font-light tracking-widest text-white/50 uppercase">Syncing with nature...</span>
+            </div>
+
+            <div id="weather-view" class="hidden flex-col flex-1 justify-between">
+                <div class="flex flex-col items-center justify-center flex-1 py-12 sm:py-16 px-8 relative">
+                    <div class="absolute inset-0 bg-gradient-to-t from-black/10 to-transparent pointer-events-none"></div>
+                    
+                    <div class="animate-float mb-6 text-white/90" id="current-icon-container">
+                        <i data-lucide="sun" class="w-20 h-20 sm:w-24 sm:h-24 stroke-[1.5]"></i>
+                    </div>
+                    
+                    <div class="flex items-start">
+                        <span id="current-temp" class="text-7xl sm:text-8xl font-light tracking-tighter leading-none">--</span>
+                        <span class="text-3xl sm:text-4xl font-light text-white/60 mt-2 ml-1">°</span>
+                    </div>
+                    
+                    <div class="mt-4 flex flex-col items-center space-y-1">
+                        <span id="current-condition" class="text-lg sm:text-xl font-light tracking-widest text-white/90">--</span>
+                        <div class="flex items-center space-x-4 text-xs font-light tracking-wider text-white/60">
+                            <span id="current-precip">Precipitation: -- mm</span>
+                            <span class="w-1 h-1 rounded-full bg-white/30"></span>
+                            <span id="current-wind">Wind: -- m/s</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-white/5 border-t border-b border-white/10 p-6 sm:px-8 flex flex-col space-y-4 shrink-0">
+                    <div class="flex items-center space-x-2 text-white/80 mb-2">
+                        <i data-lucide="sparkles" class="w-4 h-4"></i>
+                        <span class="text-xs font-light tracking-widest uppercase">Today's Guide</span>
+                    </div>
+                    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                        <div class="flex items-start space-x-3 bg-black/20 rounded-xl p-4 border border-white/5">
+                            <i data-lucide="umbrella" class="w-5 h-5 text-white/60 mt-0.5 min-w-[20px]"></i>
+                            <div>
+                                <p class="text-xs font-medium text-white/90 mb-1">降水量と持ち物</p>
+                                <p id="advice-rain" class="text-xs font-light text-white/70 leading-relaxed">--</p>
+                            </div>
+                        </div>
+                        <div class="flex items-start space-x-3 bg-black/20 rounded-xl p-4 border border-white/5">
+                            <i data-lucide="shirt" class="w-5 h-5 text-white/60 mt-0.5 min-w-[20px]"></i>
+                            <div>
+                                <p class="text-xs font-medium text-white/90 mb-1">おすすめの服装</p>
+                                <p id="advice-clothes" class="text-xs font-light text-white/70 leading-relaxed">--</p>
+                            </div>
+                        </div>
+                        <div class="flex items-start space-x-3 bg-black/20 rounded-xl p-4 border border-white/5">
+                            <i data-lucide="wind" class="w-5 h-5 text-white/60 mt-0.5 min-w-[20px]"></i>
+                            <div>
+                                <p class="text-xs font-medium text-white/90 mb-1">風の強さ</p>
+                                <p id="advice-wind" class="text-xs font-light text-white/70 leading-relaxed">--</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="flex justify-end items-center space-x-2 mt-2">
+                         <span id="last-updated" class="text-[0.65rem] text-white/40 tracking-wider">Last updated: --:--</span>
+                         <span id="update-countdown" class="text-[0.65rem] text-white/30 tracking-wider hidden">| Next in --:--</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 右パネル -->
+        <div class="w-full md:w-5/12 lg:w-1/3 max-w-md rounded-[2rem] glass-panel flex-col overflow-hidden transition-all duration-700 ease-out transform opacity-0 translate-y-8 hidden h-[600px] max-h-[80vh] md:h-auto md:max-h-[calc(100vh-6rem)]" id="side-panel">
+            <div class="px-6 py-6 border-b border-white/10 bg-black/20 backdrop-blur-md z-10 flex items-center space-x-3 shrink-0">
+                <i data-lucide="clock" class="w-5 h-5 text-white/80"></i>
+                <h3 class="text-xs font-light tracking-[0.2em] text-white/80 uppercase">24h Forecast</h3>
+            </div>
+            <div class="flex-1 overflow-y-auto scrollbar-hide p-6 space-y-3 bg-black/10 relative" id="hourly-forecast-list">
+                <!-- JSで動的に追加される -->
+            </div>
+        </div>
+
+        <div id="error-message" class="hidden mt-6 text-white/70 text-sm font-light text-center backdrop-blur-md bg-black/30 border border-white/10 px-6 py-3 rounded-full transition-opacity">
+            Nature is currently offline. Please refresh later.
+        </div>
+    </div>
+
+    <!-- テスト/デバッグ用パネル -->
+    <div class="fixed bottom-4 left-4 z-50 flex flex-col space-y-2">
+        <button id="toggle-test-panel" class="w-10 h-10 rounded-full glass-panel flex items-center justify-center text-white/50 hover:text-white transition-colors" aria-label="Toggle Test Mode">
+            <i data-lucide="flask-conical" class="w-5 h-5"></i>
+        </button>
+        <div id="test-panel" class="hidden flex-col space-y-4 p-4 rounded-2xl glass-panel text-xs text-white/80 w-72 backdrop-blur-xl bg-black/40 border border-white/20 origin-bottom-left transition-all duration-300">
+            <div class="flex justify-between items-center mb-1">
+                <span class="font-semibold tracking-wider flex items-center gap-1"><i data-lucide="settings-2" class="w-3 h-3"></i> TEST MODE</span>
+            </div>
+            
+            <div class="space-y-2">
+                <span class="text-white/50 uppercase tracking-widest text-[0.65rem]">Weather</span>
+                <div class="grid grid-cols-4 gap-2">
+                    <button class="test-btn-weather py-1.5 px-2 rounded bg-white/10 hover:bg-white/20 transition-colors" data-weather="clear">快晴</button>
+                    <button class="test-btn-weather py-1.5 px-2 rounded bg-white/10 hover:bg-white/20 transition-colors" data-weather="sunny">晴れ</button>
+                    <button class="test-btn-weather py-1.5 px-2 rounded bg-white/10 hover:bg-white/20 transition-colors" data-weather="cloudy">曇り</button>
+                    <button class="test-btn-weather py-1.5 px-2 rounded bg-white/10 hover:bg-white/20 transition-colors text-blue-200" data-weather="fog">霧</button>
+                    <button class="test-btn-weather py-1.5 px-2 rounded bg-white/10 hover:bg-white/20 transition-colors" data-weather="rain">雨</button>
+                    <button class="test-btn-weather py-1.5 px-2 rounded bg-white/10 hover:bg-white/20 transition-colors" data-weather="heavy-rain">大雨</button>
+                    <button class="test-btn-weather py-1.5 px-2 rounded bg-white/10 hover:bg-white/20 transition-colors text-yellow-200" data-weather="thunder">雷雨</button>
+                    <button class="test-btn-weather py-1.5 px-2 rounded bg-white/10 hover:bg-white/20 transition-colors text-cyan-200" data-weather="sleet">みぞれ</button>
+                </div>
+            </div>
+
+            <div class="space-y-2">
+                <span class="text-white/50 uppercase tracking-widest text-[0.65rem]">Time</span>
+                <div class="grid grid-cols-3 gap-2">
+                    <button class="test-btn-time py-1.5 px-2 rounded bg-white/10 hover:bg-white/20 transition-colors" data-time="morning">朝</button>
+                    <button class="test-btn-time py-1.5 px-2 rounded bg-white/10 hover:bg-white/20 transition-colors" data-time="day">昼</button>
+                    <button class="test-btn-time py-1.5 px-2 rounded bg-white/10 hover:bg-white/20 transition-colors" data-time="night">夜</button>
+                </div>
+            </div>
+            
+            <button id="reset-test" class="w-full py-2 mt-2 rounded bg-red-500/30 hover:bg-red-500/50 text-red-100 transition-colors font-medium">Live Dataに戻す</button>
+        </div>
+    </div>
+
+    <script>
+        const YOKOHAMA_LAT = 35.4478;
+        const YOKOHAMA_LON = 139.6425;
+        const WEATHER_API_URL = `https://api.open-meteo.com/v1/forecast?latitude=${YOKOHAMA_LAT}&longitude=${YOKOHAMA_LON}&hourly=temperature_2m,weathercode,precipitation,windspeed_10m&current_weather=true&timezone=Asia%2FTokyo&models=jma_seamless`;
+        const TYPHOON_API_URL = 'https://www.jma.go.jp/bosai/typhoon/data/TCInfo.json';
+
+        const WEATHER_CODES = {
+            0: { label: 'Clear Sky', icon: 'sun', iconNight: 'moon' },
+            1: { label: 'Mainly Clear', icon: 'sun', iconNight: 'moon' },
+            2: { label: 'Partly Cloudy', icon: 'cloud-sun', iconNight: 'cloud-moon' },
+            3: { label: 'Overcast', icon: 'cloud', iconNight: 'cloud' },
+            45: { label: 'Fog', icon: 'cloud-fog', iconNight: 'cloud-fog' },
+            48: { label: 'Rime Fog', icon: 'cloud-fog', iconNight: 'cloud-fog' },
+            51: { label: 'Light Drizzle', icon: 'cloud-drizzle', iconNight: 'cloud-drizzle' },
+            53: { label: 'Drizzle', icon: 'cloud-drizzle', iconNight: 'cloud-drizzle' },
+            55: { label: 'Dense Drizzle', icon: 'cloud-drizzle', iconNight: 'cloud-drizzle' },
+            56: { label: 'Freezing Drizzle', icon: 'cloud-snow', iconNight: 'cloud-snow' },
+            57: { label: 'Dense Freezing Drizzle', icon: 'cloud-snow', iconNight: 'cloud-snow' },
+            61: { label: 'Slight Rain', icon: 'cloud-rain', iconNight: 'cloud-rain' },
+            63: { label: 'Rain', icon: 'cloud-rain', iconNight: 'cloud-rain' },
+            65: { label: 'Heavy Rain', icon: 'cloud-rain', iconNight: 'cloud-rain' },
+            66: { label: 'Light Freezing Rain', icon: 'cloud-snow', iconNight: 'cloud-snow' }, 
+            67: { label: 'Heavy Freezing Rain', icon: 'cloud-snow', iconNight: 'cloud-snow' }, 
+            71: { label: 'Slight Snow', icon: 'snowflake', iconNight: 'snowflake' },
+            73: { label: 'Snow', icon: 'snowflake', iconNight: 'snowflake' },
+            75: { label: 'Heavy Snow', icon: 'snowflake', iconNight: 'snowflake' },
+            77: { label: 'Snow Grains', icon: 'snowflake', iconNight: 'snowflake' },
+            80: { label: 'Light Showers', icon: 'cloud-rain', iconNight: 'cloud-rain' },
+            81: { label: 'Showers', icon: 'cloud-rain', iconNight: 'cloud-rain' },
+            82: { label: 'Heavy Showers', icon: 'cloud-lightning', iconNight: 'cloud-lightning' },
+            85: { label: 'Snow Showers', icon: 'snowflake', iconNight: 'snowflake' },
+            86: { label: 'Heavy Snow Showers', icon: 'snowflake', iconNight: 'snowflake' },
+            95: { label: 'Thunderstorm', icon: 'cloud-lightning', iconNight: 'cloud-lightning' },
+            96: { label: 'Thunderstorm & Hail', icon: 'cloud-lightning', iconNight: 'cloud-lightning' },
+            99: { label: 'Heavy Thunderstorm', icon: 'cloud-lightning', iconNight: 'cloud-lightning' }
+        };
+
+        class NatureEffect {
+            constructor() {
+                this.canvas = document.getElementById('effect-canvas');
+                this.ctx = this.canvas.getContext('2d');
+                this.particles = [];
+                this.currentType = 'none'; 
+                this.resize();
+                window.addEventListener('resize', () => this.resize());
+                this.animate = this.animate.bind(this);
+                requestAnimationFrame(this.animate);
+            }
+
+            resize() {
+                this.width = window.innerWidth;
+                this.height = window.innerHeight;
+                this.canvas.width = this.width;
+                this.canvas.height = this.height;
+            }
+
+            setEffect(type) {
+                if (this.currentType === type) return;
+                this.currentType = type;
+                this.particles = [];
+                
+                let count = 0;
+                switch(type) {
+                    case 'sunny': count = 40; break;
+                    case 'cloudy': count = 8; break;
+                    case 'fog': count = 12; break; 
+                    case 'drizzle': count = 15; break;
+                    case 'rain': count = 70; break;
+                    case 'heavy-rain': count = 150; break;
+                    case 'thunder': count = 120; break; 
+                    case 'snow': count = 50; break;
+                    case 'sleet': count = 80; break; 
+                }
+
+                for (let i = 0; i < count; i++) {
+                    this.particles.push(this.createParticle(type, true));
+                }
+            }
+
+            createParticle(type, initial = false) {
+                const p = { type };
+                if (type === 'sunny') {
+                    p.x = Math.random() * this.width;
+                    p.y = initial ? Math.random() * this.height : this.height + 10;
+                    p.size = Math.random() * 2 + 0.5;
+                    p.speedY = -(Math.random() * 0.5 + 0.1);
+                    p.opacity = Math.random() * 0.5 + 0.1;
+                    p.pulse = Math.random() * 0.02;
+                    p.pulseDir = 1;
+                } else if (type === 'cloudy') {
+                    p.x = Math.random() * this.width;
+                    p.y = Math.random() * (this.height * 0.7);
+                    p.size = Math.random() * 200 + 100;
+                    p.speedX = (Math.random() * 0.2 + 0.05) * (Math.random() > 0.5 ? 1 : -1);
+                    p.opacity = Math.random() * 0.05 + 0.01;
+                } else if (type === 'fog') {
+                    p.x = Math.random() * this.width;
+                    p.y = Math.random() * this.height;
+                    p.size = Math.random() * 300 + 150;
+                    p.speedX = (Math.random() * 0.1) * (Math.random() > 0.5 ? 1 : -1);
+                    p.speedY = (Math.random() * 0.05) * (Math.random() > 0.5 ? 1 : -1);
+                    p.opacity = Math.random() * 0.06 + 0.02;
+                } else if (type === 'drizzle') {
+                    p.x = Math.random() * this.width;
+                    p.y = Math.random() * this.height;
+                    p.radius = 0;
+                    p.maxRadius = Math.random() * 30 + 10;
+                    p.speed = Math.random() * 0.5 + 0.2;
+                    p.opacity = 0.5;
+                } else if (type === 'rain' || type === 'heavy-rain' || type === 'thunder') {
+                    const isHeavy = type === 'heavy-rain' || type === 'thunder';
+                    p.x = Math.random() * this.width;
+                    p.y = initial ? Math.random() * this.height : -20;
+                    p.length = isHeavy ? Math.random() * 30 + 20 : Math.random() * 15 + 5;
+                    p.speedY = isHeavy ? Math.random() * 15 + 10 : Math.random() * 8 + 5;
+                    p.speedX = isHeavy ? 3 + Math.random() * 2 : 1 + Math.random();
+                    p.opacity = isHeavy ? Math.random() * 0.4 + 0.2 : Math.random() * 0.3 + 0.1;
+                } else if (type === 'snow') {
+                    p.x = Math.random() * this.width;
+                    p.y = initial ? Math.random() * this.height : -10;
+                    p.size = Math.random() * 3 + 1;
+                    p.speedY = Math.random() * 1 + 0.5;
+                    p.speedX = (Math.random() - 0.5) * 1;
+                    p.opacity = Math.random() * 0.6 + 0.2;
+                    p.angle = Math.random() * Math.PI * 2;
+                } else if (type === 'sleet') {
+                    const isRain = Math.random() > 0.5;
+                    p.isRain = isRain;
+                    p.x = Math.random() * this.width;
+                    p.y = initial ? Math.random() * this.height : -20;
+                    if (isRain) {
+                        p.length = Math.random() * 15 + 5;
+                        p.speedY = Math.random() * 8 + 5;
+                        p.speedX = 1 + Math.random();
+                        p.opacity = Math.random() * 0.3 + 0.1;
+                    } else {
+                        p.size = Math.random() * 3 + 1;
+                        p.speedY = Math.random() * 2 + 1;
+                        p.speedX = (Math.random() - 0.5) * 1;
+                        p.opacity = Math.random() * 0.6 + 0.2;
+                        p.angle = Math.random() * Math.PI * 2;
+                    }
+                }
+                return p;
+            }
+
+            updateAndDrawParticle(p, index) {
+                this.ctx.beginPath();
+                
+                if (p.type === 'sunny') {
+                    p.y += p.speedY;
+                    p.opacity += p.pulse * p.pulseDir;
+                    if (p.opacity > 0.8 || p.opacity < 0.1) p.pulseDir *= -1;
+                    
+                    this.ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                    this.ctx.fillStyle = `rgba(255, 255, 255, ${p.opacity})`;
+                    this.ctx.fill();
+                    if (p.y < -10) this.particles[index] = this.createParticle(p.type);
+                    
+                } else if (p.type === 'cloudy' || p.type === 'fog') {
+                    p.x += p.speedX;
+                    if (p.type === 'fog') p.y += p.speedY; 
+                    
+                    if (p.x > this.width + p.size) p.x = -p.size;
+                    if (p.x < -p.size) p.x = this.width + p.size;
+                    if (p.y > this.height + p.size) p.y = -p.size;
+                    if (p.y < -p.size) p.y = this.height + p.size;
+                    
+                    this.ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                    this.ctx.fillStyle = `rgba(255, 255, 255, ${p.opacity})`;
+                    this.ctx.fill();
+                    
+                } else if (p.type === 'drizzle') {
+                    p.radius += p.speed;
+                    p.opacity -= (p.speed / p.maxRadius) * 0.8;
+                    
+                    if (p.opacity > 0) {
+                        this.ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+                        this.ctx.strokeStyle = `rgba(255, 255, 255, ${p.opacity})`;
+                        this.ctx.lineWidth = 1;
+                        this.ctx.stroke();
+                    } else {
+                        this.particles[index] = this.createParticle(p.type);
+                    }
+                    
+                } else if (p.type === 'rain' || p.type === 'heavy-rain' || p.type === 'thunder') {
+                    p.x += p.speedX;
+                    p.y += p.speedY;
+                    
+                    this.ctx.moveTo(p.x, p.y);
+                    this.ctx.lineTo(p.x - p.speedX * (p.length/p.speedY), p.y - p.length);
+                    this.ctx.strokeStyle = `rgba(255, 255, 255, ${p.opacity})`;
+                    this.ctx.lineWidth = (p.type === 'heavy-rain' || p.type === 'thunder') ? 1.5 : 1;
+                    this.ctx.stroke();
+                    
+                    if (p.y > this.height + p.length || p.x > this.width + p.length) {
+                        this.particles[index] = this.createParticle(p.type);
+                        if (Math.random() > 0.5) {
+                            this.particles[index].x = Math.random() * this.width;
+                            this.particles[index].y = -20;
+                        } else {
+                            this.particles[index].x = -20;
+                            this.particles[index].y = Math.random() * this.height;
+                        }
+                    }
+                } else if (p.type === 'snow') {
+                    p.y += p.speedY;
+                    p.x += p.speedX + Math.sin(p.angle) * 0.5;
+                    p.angle += 0.02;
+                    
+                    this.ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                    this.ctx.fillStyle = `rgba(255, 255, 255, ${p.opacity})`;
+                    this.ctx.fill();
+                    
+                    if (p.y > this.height + 10) this.particles[index] = this.createParticle(p.type);
+                } else if (p.type === 'sleet') {
+                    if (p.isRain) {
+                        p.x += p.speedX;
+                        p.y += p.speedY;
+                        this.ctx.moveTo(p.x, p.y);
+                        this.ctx.lineTo(p.x - p.speedX * (p.length/p.speedY), p.y - p.length);
+                        this.ctx.strokeStyle = `rgba(255, 255, 255, ${p.opacity})`;
+                        this.ctx.lineWidth = 1;
+                        this.ctx.stroke();
+                        
+                        if (p.y > this.height + p.length || p.x > this.width + p.length) {
+                            this.particles[index] = this.createParticle(p.type);
+                        }
+                    } else {
+                        p.y += p.speedY;
+                        p.x += p.speedX + Math.sin(p.angle) * 0.5;
+                        p.angle += 0.02;
+                        this.ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                        this.ctx.fillStyle = `rgba(255, 255, 255, ${p.opacity})`;
+                        this.ctx.fill();
+                        
+                        if (p.y > this.height + 10) this.particles[index] = this.createParticle(p.type);
+                    }
+                }
+            }
+
+            animate() {
+                this.ctx.clearRect(0, 0, this.width, this.height);
+                
+                if (this.currentType === 'thunder' && Math.random() < 0.008) {
+                    this.ctx.fillStyle = `rgba(255, 255, 255, ${Math.random() * 0.5 + 0.3})`;
+                    this.ctx.fillRect(0, 0, this.width, this.height);
+                }
+
+                for (let i = 0; i < this.particles.length; i++) {
+                    this.updateAndDrawParticle(this.particles[i], i);
+                }
+                requestAnimationFrame(this.animate);
+            }
+        }
+
+        const effectManager = new NatureEffect();
+
+        const loadingView = document.getElementById('loading-view');
+        const weatherView = document.getElementById('weather-view');
+        const errorMessage = document.getElementById('error-message');
+        const mainPanel = document.getElementById('main-panel');
+        const sidePanel = document.getElementById('side-panel');
+        const refreshBtn = document.getElementById('refresh-btn');
+        const refreshIcon = document.getElementById('refresh-icon');
+        const typhoonAlert = document.getElementById('typhoon-alert');
+        const dynamicBg = document.getElementById('dynamic-bg');
+
+        const elTemp = document.getElementById('current-temp');
+        const elCond = document.getElementById('current-condition');
+        const elPrecip = document.getElementById('current-precip');
+        const elWind = document.getElementById('current-wind');
+        const elIconContainer = document.getElementById('current-icon-container');
+        const elHourlyList = document.getElementById('hourly-forecast-list');
+        const elAdviceRain = document.getElementById('advice-rain');
+        const elAdviceClothes = document.getElementById('advice-clothes');
+        const elAdviceWind = document.getElementById('advice-wind'); 
+        const elLastUpdated = document.getElementById('last-updated');
+        const elUpdateCountdown = document.getElementById('update-countdown');
+
+        let isTestMode = false;
+        let testState = { weather: 'clear', time: 'day' };
+        let countdownTimer = null;
+        let nextUpdateMs = 0;
+
+        const getTimeOfDay = (hour) => {
+            if (hour >= 5 && hour < 10) return 'morning';
+            if (hour >= 10 && hour < 17) return 'day';
+            if (hour >= 17 && hour < 19) return 'evening';
+            return 'night';
+        };
+        
+        const isDaytime = (hour) => {
+            const t = getTimeOfDay(hour);
+            return t === 'morning' || t === 'day' || t === 'evening';
+        };
+
+        const determineOverallCondition = (code, precipStr, hour) => {
+            const timeOfDay = getTimeOfDay(hour);
+            const isDay = timeOfDay !== 'night';
+            const precip = parseFloat(precipStr) || 0;
+            
+            let base = 'cloudy';
+            if ([0].includes(code)) base = 'sunny'; 
+            else if ([1, 2].includes(code)) base = 'sunny'; 
+            else if ([3].includes(code)) base = 'cloudy';
+            else if ([45, 48].includes(code)) base = 'fog'; 
+            else if ([51, 53, 55, 56, 57, 80].includes(code)) base = 'drizzle';
+            else if ([61, 63, 81, 82].includes(code)) base = 'rain';
+            else if ([65].includes(code)) base = 'heavy-rain';
+            else if ([66, 67].includes(code)) base = 'sleet'; 
+            else if ([71, 73, 75, 77, 85, 86].includes(code)) base = 'snow';
+            else if ([95, 96, 99].includes(code)) base = 'thunder'; 
+
+            if (base === 'rain' || base === 'drizzle' || base === 'heavy-rain') {
+                if (precip > 0 && precip < 3.0) base = 'drizzle';
+                else if (precip >= 3.0 && precip < 10.0) base = 'rain';
+                else if (precip >= 10.0) base = 'heavy-rain';
+            }
+
+            let bgClass = `bg-${base}`;
+            if (base === 'sunny') {
+                if (timeOfDay === 'morning') bgClass = 'bg-sunny-morning';
+                else if (timeOfDay === 'night') bgClass = 'bg-sunny-night';
+                else bgClass = 'bg-sunny-day';
+            } else if (base === 'cloudy') {
+                if (!isDay) bgClass = 'bg-cloudy-night';
+            }
+            
+            return { effect: base, bgClass: bgClass };
+        };
+
+        const generateAdvice = (temp, precip, wind) => {
+            let rainAdvice = '';
+            if (precip === 0) {
+                rainAdvice = '雨の心配はありません。傘は不要です。';
+            } else if (precip < 1.0) {
+                rainAdvice = 'ポツポツとした小雨が降る可能性があります。念のため折りたたみ傘があると安心です。';
+            } else if (precip < 3.0) {
+                rainAdvice = '本降りの雨です。標準的なサイズの傘をお持ちください。';
+            } else if (precip < 10.0) {
+                rainAdvice = '強い雨が降ります。大きめの傘や、靴など足元の雨対策をおすすめします。';
+            } else {
+                rainAdvice = '非常に激しい雨です。外出はなるべく控え、頑丈な雨具を使用してください。';
+            }
+
+            let clothesAdvice = '';
+            if (temp >= 30) {
+                clothesAdvice = '厳しい暑さです。半袖など涼しい服装で、熱中症対策を万全に。';
+            } else if (temp >= 25) {
+                clothesAdvice = '暑さを感じます。半袖のシャツやTシャツで快適に過ごせます。';
+            } else if (temp >= 20) {
+                clothesAdvice = '過ごしやすい気温です。長袖のシャツや、半袖に薄手の羽織りものが丁度良いです。';
+            } else if (temp >= 15) {
+                clothesAdvice = '少し肌寒く感じます。セーターやカーディガン、薄手のジャケットが必要です。';
+            } else if (temp >= 10) {
+                clothesAdvice = '寒いです。冬用のコートや厚手のジャケットがおすすめです。';
+            } else {
+                clothesAdvice = '非常に厳しい寒さです。ダウンジャケットにマフラーなどしっかりとした防寒対策を。';
+            }
+
+            let windAdvice = '';
+            if (wind < 3.0) {
+                windAdvice = '風は穏やかで過ごしやすいでしょう。';
+            } else if (wind < 8.0) {
+                windAdvice = '少し風があります。髪や軽いものがなびく程度です。';
+            } else if (wind < 15.0) {
+                windAdvice = '風が強く吹いています。傘が差しにくくなるため注意してください。';
+            } else {
+                windAdvice = '非常に強い風です。飛来物に十分注意し、不要不急の外出は控えるのが無難です。';
+            }
+
+            return { rainAdvice, clothesAdvice, windAdvice };
+        };
+
+        function applyTestState() {
+            isTestMode = true;
+            
+            let d = new Date();
+            if (testState.time === 'morning') d.setHours(7, 0, 0, 0);
+            else if (testState.time === 'day') d.setHours(12, 0, 0, 0);
+            else if (testState.time === 'night') d.setHours(20, 0, 0, 0);
+            const isoTime = d.toISOString();
+
+            let code, temp, precip;
+            switch(testState.weather) {
+                case 'clear': code = 0; temp = 28; precip = 0; break;
+                case 'sunny': code = 2; temp = 24; precip = 0; break;
+                case 'cloudy': code = 3; temp = 18; precip = 0; break;
+                case 'fog': code = 45; temp = 14; precip = 0; break; 
+                case 'rain': code = 61; temp = 16; precip = 4.0; break;
+                case 'heavy-rain': code = 65; temp = 12; precip = 15.0; break;
+                case 'thunder': code = 95; temp = 22; precip = 20.0; break; 
+                case 'sleet': code = 66; temp = 3; precip = 5.0; break; 
+            }
+
+            const mockData = {
+                current_weather: {
+                    time: isoTime,
+                    weathercode: code,
+                    temperature: temp,
+                    windspeed: 3.5
+                },
+                hourly: {
+                    time: [],
+                    weathercode: [],
+                    temperature_2m: [],
+                    precipitation: [],
+                    windspeed_10m: []
+                }
+            };
+            
+            for (let i = 0; i < 24; i++) {
+                let hd = new Date(d);
+                hd.setHours(d.getHours() + i);
+                mockData.hourly.time.push(hd.toISOString());
+                mockData.hourly.weathercode.push(code);
+                mockData.hourly.temperature_2m.push(temp);
+                mockData.hourly.precipitation.push(precip);
+                mockData.hourly.windspeed_10m.push(3.5 + Math.random() * 5); 
+            }
+
+            if (countdownTimer) clearInterval(countdownTimer);
+            elUpdateCountdown.classList.remove('hidden');
+            elUpdateCountdown.textContent = '| TEST MODE';
+            
+            updateUI(mockData);
+        }
+
+        async function fetchTyphoonInfo() {
+            try {
+                const res = await fetch(TYPHOON_API_URL);
+                if (!res.ok) return false;
+                const data = await res.json();
+                return Array.isArray(data) && data.length > 0;
+            } catch (e) {
+                console.warn('Failed to fetch typhoon info:', e);
+                return false; 
+            }
+        }
+
+        async function fetchWeather() {
+            if (isTestMode) return; 
+
+            try {
+                loadingView.classList.remove('hidden');
+                weatherView.classList.add('hidden');
+                errorMessage.classList.add('hidden');
+                refreshIcon.classList.add('spin-once');
+                setTimeout(() => refreshIcon.classList.remove('spin-once'), 800);
+
+                mainPanel.classList.remove('opacity-0', 'translate-y-8');
+                mainPanel.classList.add('opacity-100', 'translate-y-0');
+
+                const [weatherRes, hasTyphoon] = await Promise.all([
+                    fetch(WEATHER_API_URL),
+                    fetchTyphoonInfo()
+                ]);
+
+                if (!weatherRes.ok) throw new Error('Weather API returned ' + weatherRes.status);
+                const data = await weatherRes.json();
+
+                if (hasTyphoon) {
+                    typhoonAlert.classList.remove('hidden');
+                } else {
+                    typhoonAlert.classList.add('hidden');
+                }
+
+                updateUI(data);
+
+                mainPanel.classList.remove('opacity-0', 'translate-y-8');
+                mainPanel.classList.add('opacity-100', 'translate-y-0');
+
+                sidePanel.classList.remove('hidden');
+                sidePanel.classList.add('flex');
+                setTimeout(() => {
+                    sidePanel.classList.remove('opacity-0', 'translate-y-8');
+                    sidePanel.classList.add('opacity-100', 'translate-y-0');
+                }, 100);
+
+            } catch (error) {
+                console.error('Weather fetch error:', error);
+                loadingView.classList.add('hidden');
+                errorMessage.classList.remove('hidden');
+            }
+        }
+
+        function updateUI(data) {
+            const current = data.current_weather;
+            const hourly = data.hourly;
+            
+            const now = new Date();
+            const currentIsoObj = new Date(current.time);
+            const currentHour = currentIsoObj.getHours();
+            
+            let currentIndex = hourly.time.findIndex(t => new Date(t).getTime() >= currentIsoObj.getTime());
+            if (currentIndex === -1) currentIndex = 0;
+
+            const currentPrecipData = hourly.precipitation[currentIndex];
+            const isDay = isDaytime(currentHour);
+            const weatherInfo = WEATHER_CODES[current.weathercode] || WEATHER_CODES[3];
+            const iconName = isDay ? weatherInfo.icon : weatherInfo.iconNight;
+
+            elTemp.textContent = Math.round(current.temperature);
+            elCond.textContent = weatherInfo.label;
+            elPrecip.textContent = `Precip: ${currentPrecipData} mm`;
+            elWind.textContent = `Wind: ${current.windspeed} m/s`;
+            
+            elIconContainer.innerHTML = `<i data-lucide="${iconName}" class="w-20 h-20 sm:w-24 sm:h-24 stroke-[1.5]"></i>`;
+
+            const advice = generateAdvice(current.temperature, currentPrecipData, current.windspeed);
+            elAdviceRain.textContent = advice.rainAdvice;
+            elAdviceClothes.textContent = advice.clothesAdvice;
+            elAdviceWind.textContent = advice.windAdvice;
+            
+            const updateDate = new Date();
+            elLastUpdated.textContent = isTestMode ? `Last updated: --:-- (Mock)` : `Last updated: ${updateDate.getHours().toString().padStart(2, '0')}:${updateDate.getMinutes().toString().padStart(2, '0')}`;
+
+            if (!isTestMode) {
+                if (countdownTimer) clearInterval(countdownTimer);
+                nextUpdateMs = Date.now() + 15 * 60 * 1000; 
+                elUpdateCountdown.classList.remove('hidden');
+                
+                countdownTimer = setInterval(() => {
+                    const diff = nextUpdateMs - Date.now();
+                    if (diff <= 0) {
+                        elUpdateCountdown.textContent = '| Updating...';
+                    } else {
+                        const m = Math.floor(diff / 60000);
+                        const s = Math.floor((diff % 60000) / 1000);
+                        elUpdateCountdown.textContent = `| Next in ${m}:${s.toString().padStart(2, '0')}`;
+                    }
+                }, 1000);
+            }
+
+            const condition = determineOverallCondition(current.weathercode, currentPrecipData, currentHour);
+            
+            dynamicBg.className = `fixed inset-0 z-0 animate-bg-breathe transition-all duration-[3000ms] ${condition.bgClass}`;
+            
+            effectManager.setEffect(condition.effect);
+
+            elHourlyList.innerHTML = '';
+            for (let i = currentIndex; i < Math.min(currentIndex + 24, hourly.time.length); i++) {
+                const hTime = hourly.time[i];
+                const hTemp = Math.round(hourly.temperature_2m[i]);
+                const hCode = hourly.weathercode[i];
+                const hPrecip = hourly.precipitation[i];
+                const hWind = hourly.windspeed_10m[i];
+                
+                const hDate = new Date(hTime);
+                const hHour = hDate.getHours();
+                const hIsDay = isDaytime(hHour);
+                const hInfo = WEATHER_CODES[hCode] || WEATHER_CODES[3];
+                const hIcon = hIsDay ? hInfo.icon : hInfo.iconNight;
+
+                const item = document.createElement('div');
+                item.className = 'flex items-center justify-between w-full opacity-80 hover:opacity-100 transition-opacity cursor-default bg-white/5 hover:bg-white/10 rounded-xl p-4 border border-white/5 gap-2';
+                item.innerHTML = `
+                    <span class="text-sm font-light tracking-wider w-10">${hHour}:00</span>
+                    <div class="flex items-center justify-center flex-1">
+                        <i data-lucide="${hIcon}" class="w-5 h-5 stroke-[1.5]"></i>
+                    </div>
+                    <span class="text-sm font-light w-8 text-right">${hTemp}°</span>
+                    <span class="text-[0.65rem] text-white/50 w-10 text-right">${hPrecip > 0 ? hPrecip+'mm' : '-'}</span>
+                    <span class="text-[0.65rem] text-white/50 w-12 text-right flex items-center justify-end gap-1">
+                        <i data-lucide="wind" class="w-3 h-3"></i>${Math.round(hWind)}m
+                    </span>
+                `;
+                elHourlyList.appendChild(item);
+            }
+
+            lucide.createIcons();
+
+            loadingView.classList.add('hidden');
+            weatherView.classList.remove('hidden');
+            weatherView.classList.add('flex');
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            lucide.createIcons();
+            fetchWeather();
+            
+            refreshBtn.addEventListener('click', () => {
+                isTestMode = false;
+                fetchWeather();
+            });
+
+            const testPanel = document.getElementById('test-panel');
+            document.getElementById('toggle-test-panel').addEventListener('click', () => {
+                testPanel.classList.toggle('hidden');
+                testPanel.classList.toggle('flex');
+            });
+            
+            document.querySelectorAll('.test-btn-weather').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    testState.weather = e.target.dataset.weather;
+                    applyTestState();
+                });
+            });
+
+            document.querySelectorAll('.test-btn-time').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    testState.time = e.target.dataset.time;
+                    applyTestState();
+                });
+            });
+
+            document.getElementById('reset-test').addEventListener('click', () => {
+                isTestMode = false;
+                testPanel.classList.add('hidden');
+                testPanel.classList.remove('flex');
+                fetchWeather();
+            });
+
+            setInterval(fetchWeather, 15 * 60 * 1000);
+        });
+
+    </script>
+</body>
+</html>
