@@ -130,9 +130,15 @@
                 </div>
 
                 <div class="bg-white/5 border-t border-b border-white/10 p-6 sm:px-8 flex flex-col space-y-4 shrink-0">
-                    <div class="flex items-center space-x-2 text-white/80 mb-2">
-                        <i data-lucide="sparkles" class="w-4 h-4"></i>
-                        <span class="text-xs font-light tracking-widest uppercase">Today's Guide</span>
+                    <div class="flex items-center justify-between text-white/80 mb-2">
+                        <div class="flex items-center space-x-2">
+                            <i data-lucide="sparkles" class="w-4 h-4"></i>
+                            <span class="text-xs font-light tracking-widest uppercase">Today's Guide</span>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <i data-lucide="clock" class="w-4 h-4"></i>
+                            <span id="current-time-display" class="text-xs font-semibold tracking-widest">--:--</span>
+                        </div>
                     </div>
                     <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
                         <div class="flex items-start space-x-3 bg-black/20 rounded-xl p-4 border border-white/5">
@@ -168,7 +174,7 @@
         <!-- 右パネル -->
         <div class="w-full md:w-5/12 lg:w-1/3 max-w-md rounded-[2rem] glass-panel flex-col overflow-hidden transition-all duration-700 ease-out transform opacity-0 translate-y-8 hidden h-[600px] max-h-[80vh] md:h-auto md:max-h-[calc(100vh-6rem)]" id="side-panel">
             <div class="px-6 py-6 border-b border-white/10 bg-black/20 backdrop-blur-md z-10 flex items-center space-x-3 shrink-0">
-                <i data-lucide="clock" class="w-5 h-5 text-white/80"></i>
+                <i data-lucide="calendar-clock" class="w-5 h-5 text-white/80"></i>
                 <h3 class="text-xs font-light tracking-[0.2em] text-white/80 uppercase">24h Forecast</h3>
             </div>
             <div class="flex-1 overflow-y-auto scrollbar-hide p-6 space-y-3 bg-black/10 relative" id="hourly-forecast-list">
@@ -497,11 +503,21 @@
         const elAdviceWind = document.getElementById('advice-wind'); 
         const elLastUpdated = document.getElementById('last-updated');
         const elUpdateCountdown = document.getElementById('update-countdown');
+        const elCurrentTimeDisplay = document.getElementById('current-time-display');
 
         let isTestMode = false;
         let testState = { weather: 'clear', time: 'day' };
         let countdownTimer = null;
         let nextUpdateMs = 0;
+
+        function updateClock() {
+            const now = new Date();
+            if (elCurrentTimeDisplay) {
+                elCurrentTimeDisplay.textContent = now.getHours().toString().padStart(2, '0') + ':' + now.getMinutes().toString().padStart(2, '0');
+            }
+        }
+        setInterval(updateClock, 1000);
+        updateClock();
 
         const getTimeOfDay = (hour) => {
             if (hour >= 5 && hour < 10) return 'morning';
@@ -550,44 +566,110 @@
             return { effect: base, bgClass: bgClass };
         };
 
-        const generateAdvice = (temp, precip, wind) => {
+        const generateAdvice = (current, hourly, currentIndex) => {
+            const currentTemp = current.temperature;
+            const currentPrecip = hourly.precipitation[currentIndex] || 0;
+            const currentWind = current.windspeed;
+
+            let maxTemp = currentTemp;
+            let maxTempHour = null;
+            let minTemp = currentTemp;
+            let minTempHour = null;
+            let maxPrecip = currentPrecip;
+            let maxPrecipHour = null;
+            let maxWind = currentWind;
+            let maxWindHour = null;
+
+            let firstRainHour = null;
+            let stopRainHour = null;
+
+            const lookAheadHours = 12;
+            const maxIndex = Math.min(currentIndex + lookAheadHours, hourly.time.length);
+
+            for (let i = currentIndex + 1; i < maxIndex; i++) {
+                const t = hourly.temperature_2m[i];
+                const p = hourly.precipitation[i];
+                const w = hourly.windspeed_10m[i];
+                const d = new Date(hourly.time[i]);
+                const hourStr = d.getHours() + ':00';
+
+                if (t > maxTemp) { maxTemp = t; maxTempHour = hourStr; }
+                if (t < minTemp) { minTemp = t; minTempHour = hourStr; }
+                if (p > maxPrecip) { maxPrecip = p; maxPrecipHour = hourStr; }
+                if (w > maxWind) { maxWind = w; maxWindHour = hourStr; }
+
+                if (currentPrecip === 0 && p > 0.5 && !firstRainHour) firstRainHour = hourStr;
+                if (currentPrecip > 0 && p === 0 && !stopRainHour) stopRainHour = hourStr;
+            }
+
+            // --- 降水量と持ち物 ---
             let rainAdvice = '';
-            if (precip === 0) {
-                rainAdvice = '雨の心配はありません。傘は不要です。';
-            } else if (precip < 1.0) {
-                rainAdvice = 'ポツポツとした小雨が降る可能性があります。念のため折りたたみ傘があると安心です。';
-            } else if (precip < 3.0) {
-                rainAdvice = '本降りの雨です。標準的なサイズの傘をお持ちください。';
-            } else if (precip < 10.0) {
-                rainAdvice = '強い雨が降ります。大きめの傘や、靴など足元の雨対策をおすすめします。';
+            if (currentPrecip === 0) {
+                if (firstRainHour) {
+                    rainAdvice = `現在は降っていませんが、${firstRainHour}頃から雨が降る予報です。傘を持ってお出かけください。`;
+                } else {
+                    rainAdvice = '雨の心配はありません。傘は不要です。';
+                }
             } else {
-                rainAdvice = '非常に激しい雨です。外出はなるべく控え、頑丈な雨具を使用してください。';
+                if (currentPrecip < 3.0) {
+                    rainAdvice = '現在小雨が降っています。念のため折りたたみ傘があると安心です。';
+                } else if (currentPrecip < 10.0) {
+                    rainAdvice = '現在本降りの雨です。標準的なサイズの傘をお持ちください。';
+                } else {
+                    rainAdvice = '現在非常に激しい雨です。外出はなるべく控え、頑丈な雨具を使用してください。';
+                }
+
+                if (maxPrecip > currentPrecip && maxPrecipHour) {
+                    if (maxPrecip >= 10.0 && currentPrecip < 10.0) {
+                         rainAdvice += ` ${maxPrecipHour}頃には非常に激しい雨（${maxPrecip}mm）になる予報です。十分ご注意ください。`;
+                    } else if (maxPrecip >= 3.0 && currentPrecip < 3.0) {
+                         rainAdvice += ` ${maxPrecipHour}頃には雨脚が強まる（${maxPrecip}mm）予報です。大きめの傘が安心です。`;
+                    } else {
+                         rainAdvice += ` ${maxPrecipHour}頃にはさらに雨が強まる（${maxPrecip}mm）見込みです。`;
+                    }
+                } else if (stopRainHour) {
+                    rainAdvice += ` ${stopRainHour}頃には雨は次第に止む見込みです。`;
+                }
             }
 
+            // --- おすすめの服装 ---
             let clothesAdvice = '';
-            if (temp >= 30) {
-                clothesAdvice = '厳しい暑さです。半袖など涼しい服装で、熱中症対策を万全に。';
-            } else if (temp >= 25) {
-                clothesAdvice = '暑さを感じます。半袖のシャツやTシャツで快適に過ごせます。';
-            } else if (temp >= 20) {
-                clothesAdvice = '過ごしやすい気温です。長袖のシャツや、半袖に薄手の羽織りものが丁度良いです。';
-            } else if (temp >= 15) {
-                clothesAdvice = '少し肌寒く感じます。セーターやカーディガン、薄手のジャケットが必要です。';
-            } else if (temp >= 10) {
-                clothesAdvice = '寒いです。冬用のコートや厚手のジャケットがおすすめです。';
+            if (currentTemp >= 30) {
+                clothesAdvice = '現在は厳しい暑さです。熱中症対策を万全に。';
+            } else if (currentTemp >= 25) {
+                clothesAdvice = '現在は暑さを感じます。半袖など涼しい服装で快適に過ごせます。';
+            } else if (currentTemp >= 20) {
+                clothesAdvice = '現在は過ごしやすい気温です。長袖のシャツや、半袖に薄手の羽織りものが丁度良いです。';
+            } else if (currentTemp >= 15) {
+                clothesAdvice = '現在は少し肌寒く感じます。セーターやカーディガンが必要です。';
+            } else if (currentTemp >= 10) {
+                clothesAdvice = '現在は寒いです。冬用のコートや厚手のジャケットがおすすめです。';
             } else {
-                clothesAdvice = '非常に厳しい寒さです。ダウンジャケットにマフラーなどしっかりとした防寒対策を。';
+                clothesAdvice = '現在は非常に厳しい寒さです。しっかりとした防寒対策を。';
             }
 
+            if (minTemp <= currentTemp - 5 && minTempHour) {
+                 clothesAdvice += ` ${minTempHour}頃には${Math.round(minTemp)}℃まで冷え込む予報です。暖かい上着を用意しておくと安心です。`;
+            } else if (maxTemp >= currentTemp + 5 && maxTempHour) {
+                 clothesAdvice += ` ${maxTempHour}頃には${Math.round(maxTemp)}℃まで気温が上がる予報です。体温調節しやすい服装がおすすめです。`;
+            }
+
+            // --- 風の強さ ---
             let windAdvice = '';
-            if (wind < 3.0) {
-                windAdvice = '風は穏やかで過ごしやすいでしょう。';
-            } else if (wind < 8.0) {
-                windAdvice = '少し風があります。髪や軽いものがなびく程度です。';
-            } else if (wind < 15.0) {
-                windAdvice = '風が強く吹いています。傘が差しにくくなるため注意してください。';
+            if (currentWind < 3.0) {
+                windAdvice = '現在は風は穏やかで過ごしやすいでしょう。';
+            } else if (currentWind < 8.0) {
+                windAdvice = '現在は少し風があります。髪や軽いものがなびく程度です。';
+            } else if (currentWind < 15.0) {
+                windAdvice = '現在は風が強く吹いています。傘が差しにくくなるため注意してください。';
             } else {
-                windAdvice = '非常に強い風です。飛来物に十分注意し、不要不急の外出は控えるのが無難です。';
+                windAdvice = '現在は非常に強い風です。飛来物に十分注意し、不要不急の外出は控えるのが無難です。';
+            }
+
+            if (maxWind >= currentWind + 5.0 && maxWindHour && maxWind >= 8.0) {
+                windAdvice += ` ${maxWindHour}頃にはさらに風が強まる予報（最大約${Math.round(maxWind)}m/s）です。ご注意ください。`;
+            } else if (currentWind < 10.0 && maxWind >= 10.0 && maxWindHour) {
+                windAdvice += ` ${maxWindHour}頃には風が強まる予報（最大約${Math.round(maxWind)}m/s）です。`;
             }
 
             return { rainAdvice, clothesAdvice, windAdvice };
@@ -635,9 +717,18 @@
                 hd.setHours(d.getHours() + i);
                 mockData.hourly.time.push(hd.toISOString());
                 mockData.hourly.weathercode.push(code);
-                mockData.hourly.temperature_2m.push(temp);
-                mockData.hourly.precipitation.push(precip);
-                mockData.hourly.windspeed_10m.push(3.5 + Math.random() * 5); 
+                
+                let mockTemp = temp;
+                if(i > 2 && i < 8) mockTemp -= 6; 
+                else if (i >= 8) mockTemp += 6; 
+                mockData.hourly.temperature_2m.push(mockTemp);
+                
+                let mockPrecip = precip;
+                if (precip === 0 && i === 5 && (code === 2 || code === 3)) mockPrecip = 5.0; 
+                if (precip > 0 && i > 3) mockPrecip = 0; 
+                mockData.hourly.precipitation.push(mockPrecip);
+                
+                mockData.hourly.windspeed_10m.push(3.5 + (i===4 ? 10 : Math.random() * 5)); 
             }
 
             if (countdownTimer) clearInterval(countdownTimer);
@@ -709,7 +800,6 @@
             const current = data.current_weather;
             const hourly = data.hourly;
             
-            const now = new Date();
             const currentIsoObj = new Date(current.time);
             const currentHour = currentIsoObj.getHours();
             
@@ -728,7 +818,7 @@
             
             elIconContainer.innerHTML = `<i data-lucide="${iconName}" class="w-20 h-20 sm:w-24 sm:h-24 stroke-[1.5]"></i>`;
 
-            const advice = generateAdvice(current.temperature, currentPrecipData, current.windspeed);
+            const advice = generateAdvice(current, hourly, currentIndex);
             elAdviceRain.textContent = advice.rainAdvice;
             elAdviceClothes.textContent = advice.clothesAdvice;
             elAdviceWind.textContent = advice.windAdvice;
@@ -738,7 +828,7 @@
 
             if (!isTestMode) {
                 if (countdownTimer) clearInterval(countdownTimer);
-                nextUpdateMs = Date.now() + 5 * 60 * 1000; 
+                nextUpdateMs = Date.now() + 10 * 60 * 1000; 
                 elUpdateCountdown.classList.remove('hidden');
                 
                 countdownTimer = setInterval(() => {
@@ -832,7 +922,7 @@
                 fetchWeather();
             });
 
-            setInterval(fetchWeather, 5 * 60 * 1000);
+            setInterval(fetchWeather, 10 * 60 * 1000);
         });
 
     </script>
